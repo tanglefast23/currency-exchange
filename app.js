@@ -149,6 +149,19 @@ function formatRate(rate) {
   return new Intl.NumberFormat(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(rate);
 }
 
+/* Every amount starts big. A long number (VND runs to eight figures) would
+   overflow the row, so step the size down by how many characters it has. */
+function fitAmount(input) {
+  const length = (input.value || '').length;
+  const size = length <= 8 ? 36 : length <= 11 ? 31 : length <= 14 ? 26 : 22;
+  input.style.fontSize = `${size}px`;
+}
+
+function fitAllAmounts() {
+  fitAmount(el.baseAmount);
+  el.list.querySelectorAll('.amount-input').forEach(fitAmount);
+}
+
 function parseAmount(text) {
   if (typeof text !== 'string') return NaN;
   let cleaned = text.replace(/[^\d.,-]/g, '');
@@ -223,6 +236,7 @@ function render() {
   el.hint.hidden = state.list.length === 0 || localStorage.getItem(HINT_KEY) === '1';
   el.refreshBtn.classList.toggle('spin', fetching);
   openRow = null;
+  fitAllAmounts();
   renderStatus();
 }
 
@@ -286,11 +300,15 @@ function handleAmountInput(inputEl, code) {
 }
 
 function updateOtherAmounts(skipEl) {
-  if (el.baseAmount !== skipEl) el.baseAmount.value = formatAmount(state.amount);
+  if (el.baseAmount !== skipEl) {
+    el.baseAmount.value = formatAmount(state.amount);
+    fitAmount(el.baseAmount);
+  }
   el.list.querySelectorAll('.amount-input').forEach(input => {
     if (input === skipEl) return;
     const rate = rateFor(input.dataset.code);
     input.value = rate === null ? '—' : formatAmount(state.amount * rate);
+    fitAmount(input);
   });
 }
 
@@ -299,13 +317,18 @@ function wireAmountInput(inputEl, getCode) {
     const code = getCode();
     const rate = code === state.base ? 1 : rateFor(code);
     inputEl.value = rate === null ? '' : rawValue(state.amount * rate);
+    fitAmount(inputEl);
     inputEl.select();
   });
-  inputEl.addEventListener('input', () => handleAmountInput(inputEl, getCode()));
+  inputEl.addEventListener('input', () => {
+    fitAmount(inputEl);
+    handleAmountInput(inputEl, getCode());
+  });
   inputEl.addEventListener('blur', () => {
     const code = getCode();
     const rate = code === state.base ? 1 : rateFor(code);
     inputEl.value = rate === null ? '—' : formatAmount(state.amount * rate);
+    fitAmount(inputEl);
   });
   inputEl.addEventListener('keydown', e => { if (e.key === 'Enter') inputEl.blur(); });
 }
@@ -348,11 +371,11 @@ function closeOpenRow() {
   openRow = null;
 }
 
-function endSwipe() {
+function endSwipe(event) {
   clearTimeout(longPressTimer);
   longPressTimer = null;
   if (!swipe) return;
-  const { row, dragging, dx } = swipe;
+  const { row, dragging, dx, input } = swipe;
   const surface = row.querySelector('.row-surface');
   row.classList.remove('dragging');
   surface.style.transform = '';
@@ -362,6 +385,9 @@ function endSwipe() {
     if (dx <= -SWIPE_OPEN) { row.classList.add('open'); openRow = row; }
   }
   swipe = null;
+  // pointerdown suppressed the browser's own focus, so a plain tap on an
+  // amount puts the caret there itself.
+  if (!dragging && input && event && event.type === 'pointerup' && !openRow) input.focus();
 }
 
 el.list.addEventListener('pointerdown', e => {
@@ -369,10 +395,15 @@ el.list.addEventListener('pointerdown', e => {
   if (!row || e.target.closest('.row-delete')) return;
   if (openRow && openRow !== row) closeOpenRow();
 
-  swipe = { row, startX: e.clientX, startY: e.clientY, dx: 0, dragging: false, pointerId: e.pointerId };
+  // Starting a drag on an unfocused amount makes the browser seize the pointer
+  // for a caret drag and fire pointercancel, which would kill the swipe.
+  const input = e.target.closest('.amount-input');
+  if (input && document.activeElement !== input) e.preventDefault();
+
+  swipe = { row, startX: e.clientX, startY: e.clientY, dx: 0, dragging: false, pointerId: e.pointerId, input };
 
   // Press and hold anywhere but the amount field (where holding means select/paste).
-  if (e.target.closest('.amount-input')) return;
+  if (input) return;
   longPressTimer = setTimeout(() => {
     longPressTimer = null;
     if (!swipe || swipe.dragging) return;

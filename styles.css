@@ -158,14 +158,13 @@ body {
   background: none;
   border: 0;
   color: var(--text);
-  font: 700 30px/1.15 inherit;
+  font: 700 36px/1.15 inherit;
   letter-spacing: -0.02em;
   text-align: right;
   padding: 2px 0;
   appearance: none;
 }
 .amount-wrap .amount-input { display: block; }
-.base-card .amount-input { font-size: 36px; }
 .amount-input:focus { outline: none; color: var(--accent); }
 .amount-input::-webkit-outer-spin-button,
 .amount-input::-webkit-inner-spin-button { appearance: none; margin: 0; }
