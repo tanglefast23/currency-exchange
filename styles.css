@@ -55,16 +55,6 @@ body {
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ---------- cards ---------- */
-.card {
-  background: var(--card);
-  border-radius: var(--radius);
-  padding: 16px 20px;
-}
-.base-card { padding-top: 14px; padding-bottom: 18px; }
-.card-label { color: var(--muted); font-size: 15px; margin-bottom: 6px; }
-
-.divider { height: 1px; background: var(--line); margin: 14px 4px; }
-
 .list { display: flex; flex-direction: column; gap: 12px; }
 
 .row {
@@ -79,7 +69,7 @@ body {
   overflow: hidden;
   touch-action: pan-y;
 }
-.rate-row .row { align-items: flex-start; }
+.rate-row .row { align-items: center; }
 
 .row-surface {
   position: relative;
@@ -148,8 +138,6 @@ body {
 .chev { width: 20px; height: 20px; fill: var(--muted); }
 
 /* ---------- amounts ---------- */
-.amount-wrap { margin-left: auto; text-align: right; min-width: 0; flex: 1 1 auto; }
-
 /* A button, not a text field: a real input makes the phone open its own
    keyboard and zoom the page in. Tapping this opens the in-app numpad. */
 .amount-value {
@@ -164,22 +152,19 @@ body {
   font: 700 36px/1.15 inherit;
   letter-spacing: -0.02em;
   text-align: right;
-  padding: 2px 0;
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
+  /* A fixed box, so stepping the font down for a long number never makes one
+     row shorter than the next. */
+  height: 44px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
 }
 .amount-value:active { color: var(--accent); }
 .amount-value:focus-visible { outline: 2px solid var(--accent); border-radius: 8px; }
-
-.rate-note {
-  color: var(--muted);
-  font-size: 14px;
-  margin-top: 6px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 
 /* ---------- add ---------- */
 .add-btn {

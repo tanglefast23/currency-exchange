@@ -1,12 +1,15 @@
 /* Currency exchange — vanilla JS, no build step. */
 
-const STORE_KEY = 'cx_state_v1';
+const STORE_KEY = 'cx_state_v2';
+const OLD_STORE_KEY = 'cx_state_v1';
 const HINT_KEY = 'cx_removal_hint_v1';
 const RATES_KEY = 'cx_rates_v1';
 const MAX_ROWS = 12;
 const STALE_MS = 30 * 60 * 1000; // refetch rates if the cache is older than 30 minutes
 
-const DEFAULT_STATE = { base: 'USD', amount: 100, list: ['VND', 'CAD', 'JPY'] };
+/* Every currency is equal. `anchor` is only bookkeeping — it records which row
+   the amount was last entered in, so the others can be derived from it. */
+const DEFAULT_STATE = { list: ['USD', 'VND', 'CAD', 'JPY'], anchor: 'USD', amount: 100 };
 
 /* ---------- rate sources (all free, no API key) ---------- */
 const SOURCES = [
@@ -52,18 +55,34 @@ let fetching = false;
 let lastError = '';
 let deferredInstall = null;
 
+function freshState() {
+  return { list: [...DEFAULT_STATE.list], anchor: DEFAULT_STATE.anchor, amount: DEFAULT_STATE.amount };
+}
+
 function loadState() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORE_KEY));
-    if (!saved || !saved.base) return { ...DEFAULT_STATE };
-    return {
-      base: saved.base,
-      amount: Number.isFinite(saved.amount) ? saved.amount : DEFAULT_STATE.amount,
-      list: Array.isArray(saved.list) ? saved.list.filter(c => c !== saved.base) : [...DEFAULT_STATE.list]
-    };
-  } catch {
-    return { ...DEFAULT_STATE };
-  }
+    if (saved && Array.isArray(saved.list) && saved.list.length) {
+      const list = [...new Set(saved.list)].slice(0, MAX_ROWS);
+      return {
+        list,
+        anchor: list.includes(saved.anchor) ? saved.anchor : list[0],
+        amount: Number.isFinite(saved.amount) ? saved.amount : DEFAULT_STATE.amount
+      };
+    }
+
+    // Carry over the older shape, where the first currency was a separate base.
+    const old = JSON.parse(localStorage.getItem(OLD_STORE_KEY));
+    if (old && old.base) {
+      const list = [...new Set([old.base, ...(Array.isArray(old.list) ? old.list : [])])].slice(0, MAX_ROWS);
+      return {
+        list,
+        anchor: old.base,
+        amount: Number.isFinite(old.amount) ? old.amount : DEFAULT_STATE.amount
+      };
+    }
+  } catch {}
+  return freshState();
 }
 
 function saveState() {
@@ -79,28 +98,47 @@ function saveRates() {
 }
 
 /* ---------- rate maths ---------- */
-function rateFor(code) {
-  if (code === state.base) return 1;
-  const own = rateTables[state.base];
-  if (own && Number.isFinite(own.rates[code])) return own.rates[code];
-  // Fall back to any cached table that knows both currencies (lets you switch base offline).
+/* Rates are fetched against one currency and every pair derived from it, so
+   typing in a different row never costs another request. */
+function fetchBase() {
+  return state.list[0] || 'USD';
+}
+
+function rateBetween(from, to) {
+  if (from === to) return 1;
+  const own = rateTables[from];
+  if (own && Number.isFinite(own.rates[to])) return own.rates[to];
   for (const table of Object.values(rateTables)) {
-    const from = table.rates[state.base];
-    const to = table.rates[code];
-    if (Number.isFinite(from) && Number.isFinite(to) && from > 0) return to / from;
+    const a = table.rates[from];
+    const b = table.rates[to];
+    if (Number.isFinite(a) && Number.isFinite(b) && a > 0) return b / a;
   }
   return null;
 }
 
+function rateFor(code) {
+  return rateBetween(state.anchor, code);
+}
+
+/* The anchor left the list, so move the amount onto a row that is still there
+   and every visible figure stays what it was. */
+function reanchor(leavingCode) {
+  const next = state.list[0];
+  if (!next) return;
+  const rate = rateBetween(leavingCode, next);
+  state.anchor = next;
+  if (Number.isFinite(rate)) state.amount = state.amount * rate;
+}
+
 function ratesTime() {
-  const own = rateTables[state.base];
+  const own = rateTables[fetchBase()];
   if (own) return own.time;
   const times = Object.values(rateTables).map(t => t.time).filter(Boolean);
   return times.length ? Math.max(...times) : 0;
 }
 
 function ratesAreStale() {
-  const own = rateTables[state.base];
+  const own = rateTables[fetchBase()];
   if (!own) return true;
   return Date.now() - (own.fetched || own.time || 0) > STALE_MS;
 }
@@ -112,7 +150,7 @@ async function fetchRates({ force = false } = {}) {
   lastError = '';
   render();
 
-  const base = state.base;
+  const base = fetchBase();
   for (const source of SOURCES) {
     try {
       const controller = new AbortController();
@@ -158,21 +196,31 @@ function formatAmount(value, code) {
   }).format(value);
 }
 
-function formatRate(rate) {
-  const decimals = rate >= 1 ? 4 : rate >= 0.01 ? 6 : 8;
-  return new Intl.NumberFormat(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(rate);
-}
+/* Every amount is the same size. Only if one genuinely will not fit does it
+   step down, and the widths are measured rather than guessed from the character
+   count, so every figure that can be big is big. */
+const AMOUNT_SIZES = [36, 30, 25, 21, 18];
+let measureCtx = null;
 
-/* Every amount starts big. A long number (VND runs to eight figures) would
-   overflow the row, so step the size down by how many characters it has. */
-function fitAmount(input) {
-  const length = (input.textContent || '').length;
-  const size = length <= 8 ? 36 : length <= 11 ? 31 : length <= 14 ? 26 : 22;
-  input.style.fontSize = `${size}px`;
+function fitAmount(el) {
+  const text = el.textContent || '';
+  const available = el.clientWidth;
+  if (!available) return;
+  try {
+    measureCtx = measureCtx || document.createElement('canvas').getContext('2d');
+    const style = getComputedStyle(el);
+    for (const size of AMOUNT_SIZES) {
+      measureCtx.font = `${style.fontWeight} ${size}px ${style.fontFamily}`;
+      if (measureCtx.measureText(text).width <= available) {
+        el.style.fontSize = `${size}px`;
+        return;
+      }
+    }
+  } catch {}
+  el.style.fontSize = `${AMOUNT_SIZES[AMOUNT_SIZES.length - 1]}px`;
 }
 
 function fitAllAmounts() {
-  fitAmount(el.baseAmount);
   el.list.querySelectorAll('.amount-value').forEach(fitAmount);
 }
 
@@ -217,10 +265,6 @@ function flagHTML(code) {
 
 /* ---------- elements ---------- */
 const el = {
-  baseChip: document.getElementById('baseChip'),
-  baseFlag: document.getElementById('baseFlag'),
-  baseCode: document.getElementById('baseCode'),
-  baseAmount: document.getElementById('baseAmount'),
   list: document.getElementById('list'),
   addBtn: document.getElementById('addBtn'),
   hint: document.getElementById('hint'),
@@ -242,14 +286,6 @@ const el = {
 
 /* ---------- rendering ---------- */
 function render() {
-  const baseInfo = currencyInfo(state.base);
-  el.baseFlag.outerHTML = flagHTML(state.base);
-  el.baseFlag = el.baseChip.querySelector('.flag');
-  el.baseFlag.id = 'baseFlag';
-  el.baseCode.textContent = state.base;
-  el.baseChip.setAttribute('aria-label', `Base currency: ${baseInfo.name}. Tap to change.`);
-  el.baseAmount.textContent = formatAmount(state.amount, state.base);
-
   el.list.innerHTML = '';
   state.list.forEach((code, index) => el.list.appendChild(renderRow(code, index)));
 
@@ -279,11 +315,8 @@ function renderRow(code, index) {
           <span class="code">${code}</span>
           <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5z"/></svg>
         </button>
-        <div class="amount-wrap">
-          <button class="amount-value" data-code="${code}"
-                  aria-label="Amount in ${info.name}, tap to edit">${rate === null ? '—' : formatAmount(state.amount * rate, code)}</button>
-          <div class="rate-note">${rate === null ? 'rate unavailable' : `1 ${state.base} → ${formatRate(rate)} ${code}`}</div>
-        </div>
+        <button class="amount-value" data-code="${code}"
+                aria-label="Amount in ${info.name}, tap to edit">${rate === null ? '—' : formatAmount(state.amount * rate, code)}</button>
       </div>
     </div>`;
   return row;
@@ -313,7 +346,7 @@ let padText = '';
 let padReplace = true;   // the first key typed replaces the amount already there
 
 function openPad(code) {
-  const rate = code === state.base ? 1 : rateFor(code);
+  const rate = rateFor(code);
   if (rate === null) return;             // nothing sensible to type against
   padCode = code;
   padText = padSeed(state.amount * rate, code);
@@ -362,13 +395,8 @@ function applyPad() {
   const value = parseAmount(padText);
   closePad();
   if (!Number.isFinite(value) || code === null) return;
-  if (code === state.base) {
-    state.amount = value;
-  } else {
-    const rate = rateFor(code);
-    if (!rate) return;
-    state.amount = value / rate;
-  }
+  state.anchor = code;          // the row you typed in becomes what the rest derive from
+  state.amount = value;
   saveState();
   render();
 }
@@ -388,8 +416,6 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Enter') { applyPad(); e.preventDefault(); }
 });
 
-el.baseAmount.addEventListener('click', () => openPad(state.base));
-
 el.list.addEventListener('click', e => {
   const amount = e.target.closest('.amount-value');
   if (amount) { openPad(amount.dataset.code); return; }
@@ -401,8 +427,10 @@ el.list.addEventListener('click', e => {
 });
 
 function removeRow(index) {
-  if (!state.list[index]) return;
+  const code = state.list[index];
+  if (!code) return;
   state.list.splice(index, 1);
+  if (state.anchor === code) reanchor(code);
   try { localStorage.setItem(HINT_KEY, '1'); } catch {}   // they know the gesture now
   saveState();
   render();
@@ -528,8 +556,7 @@ el.confirmSheet.addEventListener('click', e => { if (e.target.dataset.closeConfi
 /* ---------- picker sheet ---------- */
 function openSheet(mode) {
   sheetMode = mode;
-  el.sheetTitle.textContent =
-    mode === 'base' ? 'Convert from' : mode === 'add' ? 'Add a currency' : 'Change currency';
+  el.sheetTitle.textContent = mode === 'add' ? 'Add a currency' : 'Change currency';
   el.search.value = '';
   renderOptions('');
   el.sheet.hidden = false;
@@ -546,7 +573,7 @@ function closeSheet() {
 
 function renderOptions(query) {
   const q = query.trim().toLowerCase();
-  const used = new Set([state.base, ...state.list]);
+  const used = new Set(state.list);
   const matches = CURRENCIES.filter(c =>
     !q || c.code.toLowerCase().includes(q) || c.name.toLowerCase().includes(q)
   );
@@ -557,11 +584,8 @@ function renderOptions(query) {
   }
 
   el.options.innerHTML = matches.map(c => {
-    const isCurrent =
-      (sheetMode === 'base' && c.code === state.base) ||
-      (typeof sheetMode === 'number' && c.code === state.list[sheetMode]);
-    // Picking a new base may reuse a listed currency — the swap below sorts the list out.
-    const blocked = sheetMode !== 'base' && used.has(c.code) && !isCurrent;
+    const isCurrent = typeof sheetMode === 'number' && c.code === state.list[sheetMode];
+    const blocked = used.has(c.code) && !isCurrent;
     return `
       <button class="option" data-code="${c.code}" ${blocked ? 'aria-disabled="true"' : ''}>
         ${flagHTML(c.code)}
@@ -581,19 +605,13 @@ el.options.addEventListener('click', e => {
 });
 
 function chooseCurrency(code) {
-  if (sheetMode === 'base') {
-    if (code !== state.base) {
-      const oldRate = rateFor(code);            // convert the amount so the value stays the same
-      state.list = state.list.filter(c => c !== code);
-      if (!state.list.includes(state.base)) state.list.unshift(state.base);
-      state.list = state.list.slice(0, MAX_ROWS);
-      if (oldRate) state.amount = state.amount * oldRate;
-      state.base = code;
-    }
-  } else if (sheetMode === 'add') {
-    if (!state.list.includes(code) && code !== state.base) state.list.push(code);
+  if (sheetMode === 'add') {
+    if (!state.list.includes(code)) state.list.push(code);
   } else if (typeof sheetMode === 'number') {
+    const replaced = state.list[sheetMode];
     state.list[sheetMode] = code;
+    // Swapping the anchor out: keep the same value by re-anchoring to another row.
+    if (state.anchor === replaced) reanchor(replaced);
   }
   saveState();
   closeSheet();
@@ -611,7 +629,6 @@ document.addEventListener('keydown', e => {
 });
 
 /* ---------- top bar ---------- */
-el.baseChip.addEventListener('click', () => openSheet('base'));
 el.addBtn.addEventListener('click', () => openSheet('add'));
 el.refreshBtn.addEventListener('click', () => fetchRates({ force: true }));
 
@@ -641,7 +658,6 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   });
 }
-
 
 /* ---------- start ---------- */
 flagEmojiWorks = detectFlagEmoji();
