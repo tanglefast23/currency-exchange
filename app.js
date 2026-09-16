@@ -137,16 +137,43 @@ async function fetchRates({ force = false } = {}) {
 }
 
 /* ---------- formatting ---------- */
-const amountFmt = new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+/* Currencies with no subunit in everyday use — cents make no sense for them. */
+const ZERO_DECIMAL = new Set(['VND']);
 
-function formatAmount(value) {
+/* Above this, the cents are noise next to the size of the number. */
+const WHOLE_ABOVE = 100000;
+
+function decimalsFor(code, value) {
+  if (ZERO_DECIMAL.has(code)) return 0;
+  if (Math.abs(value) >= WHOLE_ABOVE) return 0;
+  return 2;
+}
+
+function formatAmount(value, code) {
   if (!Number.isFinite(value)) return '—';
-  return amountFmt.format(value);
+  const decimals = decimalsFor(code, value);
+  return new Intl.NumberFormat(undefined, {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals
+  }).format(value);
 }
 
 function formatRate(rate) {
   const decimals = rate >= 1 ? 4 : rate >= 0.01 ? 6 : 8;
   return new Intl.NumberFormat(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(rate);
+}
+
+/* Every amount starts big. A long number (VND runs to eight figures) would
+   overflow the row, so step the size down by how many characters it has. */
+function fitAmount(input) {
+  const length = (input.textContent || '').length;
+  const size = length <= 8 ? 36 : length <= 11 ? 31 : length <= 14 ? 26 : 22;
+  input.style.fontSize = `${size}px`;
+}
+
+function fitAllAmounts() {
+  fitAmount(el.baseAmount);
+  el.list.querySelectorAll('.amount-value').forEach(fitAmount);
 }
 
 function parseAmount(text) {
@@ -158,9 +185,12 @@ function parseAmount(text) {
   return Number.isFinite(value) ? value : NaN;
 }
 
-function rawValue(value) {
+/* Seed the pad with what the row actually shows, not full precision:
+   449.91 rather than 449.914926, and 25000 rather than 25000.00. */
+function padSeed(value, code) {
   if (!Number.isFinite(value)) return '';
-  return String(Math.round(value * 1e6) / 1e6);
+  const fixed = value.toFixed(decimalsFor(code, value));
+  return fixed.endsWith('.00') ? fixed.slice(0, -3) : fixed;
 }
 
 /* ---------- flags ---------- */
@@ -194,6 +224,10 @@ const el = {
   list: document.getElementById('list'),
   addBtn: document.getElementById('addBtn'),
   hint: document.getElementById('hint'),
+  padSheet: document.getElementById('padSheet'),
+  padFlag: document.getElementById('padFlag'),
+  padCode: document.getElementById('padCode'),
+  padValue: document.getElementById('padValue'),
   confirmSheet: document.getElementById('confirmSheet'),
   confirmText: document.getElementById('confirmText'),
   confirmRemove: document.getElementById('confirmRemove'),
@@ -214,7 +248,7 @@ function render() {
   el.baseFlag.id = 'baseFlag';
   el.baseCode.textContent = state.base;
   el.baseChip.setAttribute('aria-label', `Base currency: ${baseInfo.name}. Tap to change.`);
-  if (document.activeElement !== el.baseAmount) el.baseAmount.value = formatAmount(state.amount);
+  el.baseAmount.textContent = formatAmount(state.amount, state.base);
 
   el.list.innerHTML = '';
   state.list.forEach((code, index) => el.list.appendChild(renderRow(code, index)));
@@ -223,6 +257,7 @@ function render() {
   el.hint.hidden = state.list.length === 0 || localStorage.getItem(HINT_KEY) === '1';
   el.refreshBtn.classList.toggle('spin', fetching);
   openRow = null;
+  fitAllAmounts();
   renderStatus();
 }
 
@@ -245,9 +280,8 @@ function renderRow(code, index) {
           <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5z"/></svg>
         </button>
         <div class="amount-wrap">
-          <input class="amount-input" inputmode="decimal" enterkeyhint="done"
-                 aria-label="Amount in ${info.name}" data-code="${code}"
-                 value="${rate === null ? '—' : formatAmount(state.amount * rate)}" />
+          <button class="amount-value" data-code="${code}"
+                  aria-label="Amount in ${info.name}, tap to edit">${rate === null ? '—' : formatAmount(state.amount * rate, code)}</button>
           <div class="rate-note">${rate === null ? 'rate unavailable' : `1 ${state.base} → ${formatRate(rate)} ${code}`}</div>
         </div>
       </div>
@@ -270,10 +304,64 @@ function renderStatus() {
   el.status.classList.toggle('error', Boolean(offline));
 }
 
-/* ---------- amount editing ---------- */
-function handleAmountInput(inputEl, code) {
-  const value = parseAmount(inputEl.value);
-  if (!Number.isFinite(value)) return;
+/* ---------- amount editing: an in-app numpad ---------- */
+/* A real text field makes the phone open its own keyboard and zoom the page in.
+   Amounts are buttons, and tapping one opens this pad instead. */
+
+let padCode = null;      // which currency is being typed
+let padText = '';
+let padReplace = true;   // the first key typed replaces the amount already there
+
+function openPad(code) {
+  const rate = code === state.base ? 1 : rateFor(code);
+  if (rate === null) return;             // nothing sensible to type against
+  padCode = code;
+  padText = padSeed(state.amount * rate, code);
+  padReplace = true;
+  const info = currencyInfo(code);
+  el.padFlag.innerHTML = flagHTML(code);
+  el.padCode.textContent = code;
+  el.padSheet.setAttribute('aria-label', `Enter an amount in ${info.name}`);
+  renderPad();
+  el.padSheet.hidden = false;
+  document.body.style.overflow = 'hidden';
+}
+
+function closePad() {
+  el.padSheet.hidden = true;
+  document.body.style.overflow = '';
+  padCode = null;
+}
+
+function renderPad() {
+  const shown = padText === '' ? '0' : padText;
+  el.padValue.textContent = shown;
+  el.padValue.style.fontSize = shown.length <= 9 ? '40px' : shown.length <= 12 ? '34px' : '28px';
+}
+
+function padPress(key) {
+  if (key === 'back') {
+    padReplace = false;
+    padText = padText.slice(0, -1);
+    renderPad();
+    return;
+  }
+  if (padReplace) { padText = ''; padReplace = false; }
+  if (key === '.') {
+    if (padText.includes('.')) return;
+    padText = (padText || '0') + '.';
+  } else {
+    if (padText.replace(/[^0-9]/g, '').length >= 15) return;   // keep it sane
+    padText = padText === '0' ? key : padText + key;
+  }
+  renderPad();
+}
+
+function applyPad() {
+  const code = padCode;
+  const value = parseAmount(padText);
+  closePad();
+  if (!Number.isFinite(value) || code === null) return;
   if (code === state.base) {
     state.amount = value;
   } else {
@@ -282,46 +370,29 @@ function handleAmountInput(inputEl, code) {
     state.amount = value / rate;
   }
   saveState();
-  updateOtherAmounts(inputEl);
+  render();
 }
 
-function updateOtherAmounts(skipEl) {
-  if (el.baseAmount !== skipEl) el.baseAmount.value = formatAmount(state.amount);
-  el.list.querySelectorAll('.amount-input').forEach(input => {
-    if (input === skipEl) return;
-    const rate = rateFor(input.dataset.code);
-    input.value = rate === null ? '—' : formatAmount(state.amount * rate);
-  });
-}
-
-function wireAmountInput(inputEl, getCode) {
-  inputEl.addEventListener('focus', () => {
-    const code = getCode();
-    const rate = code === state.base ? 1 : rateFor(code);
-    inputEl.value = rate === null ? '' : rawValue(state.amount * rate);
-    inputEl.select();
-  });
-  inputEl.addEventListener('input', () => handleAmountInput(inputEl, getCode()));
-  inputEl.addEventListener('blur', () => {
-    const code = getCode();
-    const rate = code === state.base ? 1 : rateFor(code);
-    inputEl.value = rate === null ? '—' : formatAmount(state.amount * rate);
-  });
-  inputEl.addEventListener('keydown', e => { if (e.key === 'Enter') inputEl.blur(); });
-}
-
-wireAmountInput(el.baseAmount, () => state.base);
-
-el.list.addEventListener('focusin', e => {
-  const input = e.target.closest('.amount-input');
-  if (input && !input.dataset.wired) {
-    input.dataset.wired = '1';
-    wireAmountInput(input, () => input.dataset.code);
-    input.dispatchEvent(new Event('focus'));
-  }
+el.padSheet.addEventListener('click', e => {
+  if (e.target.dataset.closePad) { closePad(); return; }
+  const key = e.target.closest('.pad-key');
+  if (key) { padPress(key.dataset.key); return; }
+  if (e.target.closest('#padEnter')) applyPad();
 });
 
+/* A hardware keyboard should work too. */
+document.addEventListener('keydown', e => {
+  if (el.padSheet.hidden) return;
+  if (/^[0-9]$/.test(e.key) || e.key === '.') { padPress(e.key); e.preventDefault(); return; }
+  if (e.key === 'Backspace') { padPress('back'); e.preventDefault(); return; }
+  if (e.key === 'Enter') { applyPad(); e.preventDefault(); }
+});
+
+el.baseAmount.addEventListener('click', () => openPad(state.base));
+
 el.list.addEventListener('click', e => {
+  const amount = e.target.closest('.amount-value');
+  if (amount) { openPad(amount.dataset.code); return; }
   const button = e.target.closest('button[data-action]');
   if (!button) return;
   const index = Number(button.closest('.rate-row').dataset.index);
@@ -371,8 +442,6 @@ el.list.addEventListener('pointerdown', e => {
 
   swipe = { row, startX: e.clientX, startY: e.clientY, dx: 0, dragging: false, pointerId: e.pointerId };
 
-  // Press and hold anywhere but the amount field (where holding means select/paste).
-  if (e.target.closest('.amount-input')) return;
   longPressTimer = setTimeout(() => {
     longPressTimer = null;
     if (!swipe || swipe.dragging) return;
@@ -425,7 +494,6 @@ document.addEventListener('click', e => {
 // Keyboard: Delete or Backspace on a focused currency removes it.
 el.list.addEventListener('keydown', e => {
   if (e.key !== 'Delete' && e.key !== 'Backspace') return;
-  if (e.target.closest('.amount-input')) return;
   const row = e.target.closest('.rate-row');
   if (!row) return;
   e.preventDefault();
@@ -538,6 +606,7 @@ document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
   if (!el.sheet.hidden) closeSheet();
   if (!el.confirmSheet.hidden) closeConfirm();
+  if (!el.padSheet.hidden) closePad();
   closeOpenRow();
 });
 

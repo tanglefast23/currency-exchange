@@ -34,8 +34,7 @@
         <span class="code" id="baseCode">USD</span>
         <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5z"/></svg>
       </button>
-      <input id="baseAmount" class="amount-input" inputmode="decimal" enterkeyhint="done"
-             aria-label="Amount to convert" value="100.00" />
+      <button id="baseAmount" class="amount-value" aria-label="Amount to convert, tap to edit">100.00</button>
     </div>
   </section>
 
@@ -62,6 +61,34 @@
     </div>
     <input id="search" class="search" type="search" placeholder="Search currency or code" autocomplete="off" />
     <div id="options" class="options"></div>
+  </div>
+</div>
+
+<div id="padSheet" class="sheet" hidden>
+  <div class="sheet-backdrop" data-close-pad="1"></div>
+  <div class="sheet-panel pad-panel" role="dialog" aria-modal="true" aria-label="Enter an amount">
+    <div class="pad-head">
+      <span class="pad-currency"><span id="padFlag"></span><span id="padCode"></span></span>
+      <button class="text-btn" data-close-pad="1">Cancel</button>
+    </div>
+    <div id="padValue" class="pad-value" aria-live="polite">0</div>
+    <div class="pad-grid">
+      <button class="pad-key" data-key="1">1</button>
+      <button class="pad-key" data-key="2">2</button>
+      <button class="pad-key" data-key="3">3</button>
+      <button class="pad-key" data-key="4">4</button>
+      <button class="pad-key" data-key="5">5</button>
+      <button class="pad-key" data-key="6">6</button>
+      <button class="pad-key" data-key="7">7</button>
+      <button class="pad-key" data-key="8">8</button>
+      <button class="pad-key" data-key="9">9</button>
+      <button class="pad-key" data-key=".">.</button>
+      <button class="pad-key" data-key="0">0</button>
+      <button class="pad-key pad-back" data-key="back" aria-label="Backspace">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5h13v14H8l-6-7zm3.4 3L10 9.4 12.6 12 10 14.6 11.4 16 14 13.4 16.6 16 18 14.6 15.4 12 18 9.4 16.6 8 14 10.6z"/></svg>
+      </button>
+    </div>
+    <button id="padEnter" class="pad-enter">Enter</button>
   </div>
 </div>
 
