@@ -15,6 +15,8 @@ no API key, no dependencies.
 - **Tap any amount** — the top one or any row — to open a built-in numpad. Every other
   amount recalculates from what you enter.
 - Your base currency, amount and list are saved on the device, so the app opens exactly where you left it.
+- **Whole numbers where cents are noise**: VND never shows them, and neither does
+  any amount of 100,000 or more.
 - **Offline**: the last rates are cached. The footer tells you the date they came from.
 - **Installable**: Chrome/Edge show an Install button; on iOS use Share → Add to Home Screen.
 

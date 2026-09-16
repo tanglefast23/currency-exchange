@@ -137,11 +137,25 @@ async function fetchRates({ force = false } = {}) {
 }
 
 /* ---------- formatting ---------- */
-const amountFmt = new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+/* Currencies with no subunit in everyday use — cents make no sense for them. */
+const ZERO_DECIMAL = new Set(['VND']);
 
-function formatAmount(value) {
+/* Above this, the cents are noise next to the size of the number. */
+const WHOLE_ABOVE = 100000;
+
+function decimalsFor(code, value) {
+  if (ZERO_DECIMAL.has(code)) return 0;
+  if (Math.abs(value) >= WHOLE_ABOVE) return 0;
+  return 2;
+}
+
+function formatAmount(value, code) {
   if (!Number.isFinite(value)) return '—';
-  return amountFmt.format(value);
+  const decimals = decimalsFor(code, value);
+  return new Intl.NumberFormat(undefined, {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals
+  }).format(value);
 }
 
 function formatRate(rate) {
@@ -173,9 +187,9 @@ function parseAmount(text) {
 
 /* Seed the pad with what the row actually shows, not full precision:
    449.91 rather than 449.914926, and 25000 rather than 25000.00. */
-function padSeed(value) {
+function padSeed(value, code) {
   if (!Number.isFinite(value)) return '';
-  const fixed = value.toFixed(2);
+  const fixed = value.toFixed(decimalsFor(code, value));
   return fixed.endsWith('.00') ? fixed.slice(0, -3) : fixed;
 }
 
@@ -234,7 +248,7 @@ function render() {
   el.baseFlag.id = 'baseFlag';
   el.baseCode.textContent = state.base;
   el.baseChip.setAttribute('aria-label', `Base currency: ${baseInfo.name}. Tap to change.`);
-  el.baseAmount.textContent = formatAmount(state.amount);
+  el.baseAmount.textContent = formatAmount(state.amount, state.base);
 
   el.list.innerHTML = '';
   state.list.forEach((code, index) => el.list.appendChild(renderRow(code, index)));
@@ -267,7 +281,7 @@ function renderRow(code, index) {
         </button>
         <div class="amount-wrap">
           <button class="amount-value" data-code="${code}"
-                  aria-label="Amount in ${info.name}, tap to edit">${rate === null ? '—' : formatAmount(state.amount * rate)}</button>
+                  aria-label="Amount in ${info.name}, tap to edit">${rate === null ? '—' : formatAmount(state.amount * rate, code)}</button>
           <div class="rate-note">${rate === null ? 'rate unavailable' : `1 ${state.base} → ${formatRate(rate)} ${code}`}</div>
         </div>
       </div>
@@ -302,7 +316,7 @@ function openPad(code) {
   const rate = code === state.base ? 1 : rateFor(code);
   if (rate === null) return;             // nothing sensible to type against
   padCode = code;
-  padText = padSeed(state.amount * rate);
+  padText = padSeed(state.amount * rate, code);
   padReplace = true;
   const info = currencyInfo(code);
   el.padFlag.innerHTML = flagHTML(code);
