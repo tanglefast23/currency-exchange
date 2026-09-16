@@ -12,9 +12,10 @@ no API key, no dependencies.
 - **Add another currency** appends a row, up to 12.
 - **Swipe a row left** to reveal Delete, or **press and hold** it to confirm removal.
   With a keyboard, focus a currency and press Delete.
-- **Tap any amount** — the top one or any row — to open a built-in numpad. Every other
-  amount recalculates from what you enter.
-- Your base currency, amount and list are saved on the device, so the app opens exactly where you left it.
+- **Every currency is an equal row.** There is no base and no special first card.
+- **Tap any amount** to open a built-in numpad. Enter a figure in any row and every
+  other row recalculates from it.
+- Your list and the amount are saved on the device, so the app opens exactly where you left it.
 - **Whole numbers where cents are noise**: VND never shows them, and neither does
   any amount of 100,000 or more.
 - **Offline**: the last rates are cached. The footer tells you the date they came from.
