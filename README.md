@@ -18,6 +18,8 @@ no API key, no dependencies.
 - Your list and the amount are saved on the device, so the app opens exactly where you left it.
 - **Whole numbers where cents are noise**: VND never shows them, and neither does
   any amount of 100,000 or more.
+- **Three themes.** The button beside refresh cycles dark → light → pastel pink,
+  and the choice is remembered.
 - **Offline**: the last rates are cached. The footer tells you the date they came from.
 - **Installable**: Chrome/Edge show an Install button; on iOS use Share → Add to Home Screen.
 
@@ -34,6 +36,8 @@ Rates are mid-market reference rates. Banks and exchange desks charge a spread,
 so treat these as indicative, not what you will actually get at the counter.
 
 ![Swipe to delete](docs/swipe.png)
+![Light theme](docs/theme-light.png)
+![Pastel pink theme](docs/theme-pink.png)
 ![Numpad](docs/numpad.png)
 
 ## Why a built-in numpad

@@ -1,4 +1,7 @@
-:root {
+/* Three themes, cycled by the button in the header. Everything colour-related
+   is a token, so a theme is just a different set of these. */
+:root,
+[data-theme="dark"] {
   --bg: #000000;
   --card: #1c1c1e;
   --card-press: #2a2a2d;
@@ -6,9 +9,47 @@
   --muted: #8e8e93;
   --line: #2c2c2e;
   --accent: #30d158;
+  --on-accent: #04210d;
   --danger: #ff453a;
-  --radius: 22px;
+  --warn: #ff9f0a;
+  --flag-bg: #3a3a3c;
+  --sheet: #121214;
+  --backdrop: rgba(0, 0, 0, .6);
 }
+
+[data-theme="light"] {
+  --bg: #f2f2f7;
+  --card: #ffffff;
+  --card-press: #e7e7ee;
+  --text: #16161c;
+  --muted: #6b6b76;
+  --line: #d9d9e1;
+  --accent: #0a8f3c;
+  --on-accent: #ffffff;
+  --danger: #d70015;
+  --warn: #9a5b00;
+  --flag-bg: #e4e4ec;
+  --sheet: #e8e8f0;
+  --backdrop: rgba(0, 0, 0, .35);
+}
+
+[data-theme="pink"] {
+  --bg: #fff4f8;
+  --card: #ffffff;
+  --card-press: #ffe4ef;
+  --text: #40202f;
+  --muted: #9c7183;
+  --line: #f7d8e5;
+  --accent: #cf4d87;
+  --on-accent: #ffffff;
+  --danger: #c8384f;
+  --warn: #9c5a12;
+  --flag-bg: #fbe3ed;
+  --sheet: #fbe2ed;
+  --backdrop: rgba(64, 32, 47, .35);
+}
+
+:root { --radius: 22px; }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
@@ -59,6 +100,11 @@ body {
 .icon-btn svg { width: 22px; height: 22px; fill: var(--accent); }
 .icon-btn:active { background: var(--card); }
 .icon-btn.spin svg { animation: spin .8s linear infinite; }
+
+.theme-icon { display: none; }
+[data-theme="dark"] .theme-dark,
+[data-theme="light"] .theme-light,
+[data-theme="pink"] .theme-pink { display: block; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ---------- cards ---------- */
@@ -131,7 +177,7 @@ body {
 .flag {
   width: 40px; height: 40px;
   border-radius: 999px;
-  background: #3a3a3c;
+  background: var(--flag-bg);
   display: grid; place-items: center;
   font-size: 38px;
   line-height: 1;
@@ -239,7 +285,7 @@ body {
   background: var(--accent);
   border: 0;
   border-radius: 16px;
-  color: #04210d;
+  color: var(--on-accent);
   font: 600 19px inherit;
   padding: 18px;
   cursor: pointer;
@@ -269,18 +315,18 @@ body {
   margin: 18px 0 0;
   min-height: 1em;
 }
-.status.error { color: #ff9f0a; }
+.status.error { color: var(--warn); }
 
 /* ---------- picker sheet ---------- */
 .sheet { position: fixed; inset: 0; z-index: 50; }
 .sheet[hidden] { display: none; }
-.sheet-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.6); backdrop-filter: blur(2px); }
+.sheet-backdrop { position: absolute; inset: 0; background: var(--backdrop); backdrop-filter: blur(2px); }
 .sheet-panel {
   position: absolute;
   left: 0; right: 0; bottom: 0;
   max-height: 88dvh;
   display: flex; flex-direction: column;
-  background: #121214;
+  background: var(--sheet);
   border-radius: 22px 22px 0 0;
   padding: 8px 16px calc(12px + env(safe-area-inset-bottom));
   max-width: 560px; margin: 0 auto;
