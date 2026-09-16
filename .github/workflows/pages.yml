@@ -4,11 +4,12 @@
 # /currency-exchange/ subpath Pages serves it from.
 name: Deploy to GitHub Pages
 
+# Only the default branch can deploy: the github-pages environment refuses a
+# deployment from any other branch, so a run there fails before it starts.
 on:
   push:
     branches:
       - main
-      - claude/currency-exchange-pwa-9rnr6j
   workflow_dispatch:
 
 permissions:
