@@ -1,11 +1,12 @@
 /* Cache the app shell so the converter opens instantly and works offline. */
-const CACHE = 'currency-exchange-v1';
+const CACHE = 'currency-exchange-v2';
 const SHELL = [
   './',
   'index.html',
   'styles.css',
   'app.js',
   'currencies.js',
+  'supabase.js',
   'manifest.webmanifest',
   'icons/icon.svg',
   'icons/icon-192.png',
@@ -29,8 +30,13 @@ self.addEventListener('fetch', event => {
   const request = event.request;
   if (request.method !== 'GET') return;
 
+  const url = new URL(request.url);
+
   // Rate APIs live on other origins: always go to the network, never serve a stale rate.
-  if (new URL(request.url).origin !== self.location.origin) return;
+  if (url.origin !== self.location.origin) return;
+
+  // Our own /api/ endpoints are live config — never cache them either.
+  if (/(^|\/)api\//.test(url.pathname)) return;
 
   // Navigations: network first, fall back to the cached page when offline.
   if (request.mode === 'navigate') {

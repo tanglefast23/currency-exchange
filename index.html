@@ -19,6 +19,9 @@
   <h1>Rates</h1>
   <div class="topbar-actions">
     <button id="installBtn" class="text-btn" hidden>Install</button>
+    <button id="syncBtn" class="icon-btn muted" aria-label="Sync across devices" title="Sync across devices">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.35 10.04A7.49 7.49 0 0 0 12 4a7.48 7.48 0 0 0-6.63 4.04A5.99 5.99 0 0 0 6 20h13a5 5 0 0 0 .35-9.96z"/></svg>
+    </button>
     <button id="refreshBtn" class="icon-btn" aria-label="Refresh rates" title="Refresh rates">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5V2L8 6l4 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg>
     </button>
@@ -64,7 +67,19 @@
   </div>
 </div>
 
+<div id="syncSheet" class="sheet" hidden>
+  <div class="sheet-backdrop" data-close-sync="1"></div>
+  <div class="sheet-panel sync-panel" role="dialog" aria-modal="true" aria-label="Sync across devices">
+    <div class="sheet-head">
+      <h2>Sync across devices</h2>
+      <button class="text-btn" data-close-sync="1">Close</button>
+    </div>
+    <div id="syncBody" class="sync-body"></div>
+  </div>
+</div>
+
 <script src="currencies.js"></script>
+<script src="supabase.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
