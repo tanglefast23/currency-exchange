@@ -3,6 +3,8 @@
 const STORE_KEY = 'cx_state_v2';
 const OLD_STORE_KEY = 'cx_state_v1';
 const HINT_KEY = 'cx_removal_hint_v1';
+const THEME_KEY = 'cx_theme_v1';
+const THEMES = ['dark', 'light', 'pink'];
 const RATES_KEY = 'cx_rates_v1';
 const MAX_ROWS = 12;
 const STALE_MS = 30 * 60 * 1000; // refetch rates if the cache is older than 30 minutes
@@ -283,6 +285,7 @@ const el = {
   confirmSheet: pick('confirmSheet'),
   confirmText: pick('confirmText'),
   confirmRemove: pick('confirmRemove'),
+  themeBtn: pick('themeBtn'),
   refreshBtn: pick('refreshBtn'),
   installBtn: pick('installBtn'),
   status: pick('status'),
@@ -636,6 +639,35 @@ document.addEventListener('keydown', e => {
   closeOpenRow();
 });
 
+/* ---------- theme ---------- */
+/* One button cycling dark → light → pink. Each theme is a set of CSS tokens,
+   so switching is a single attribute on <html>. */
+function currentTheme() {
+  try {
+    const saved = localStorage.getItem(THEME_KEY);
+    if (THEMES.includes(saved)) return saved;
+  } catch {}
+  return THEMES[0];
+}
+
+function applyTheme(name) {
+  const theme = THEMES.includes(name) ? name : THEMES[0];
+  document.documentElement.dataset.theme = theme;
+  try { localStorage.setItem(THEME_KEY, theme); } catch {}
+
+  // Keep the phone's own chrome in step with the page.
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = getComputedStyle(document.body).backgroundColor || meta.content;
+
+  const next = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length];
+  el.themeBtn.setAttribute('aria-label', `Theme: ${theme}. Tap for ${next}.`);
+  el.themeBtn.setAttribute('title', `Theme: ${theme}. Tap for ${next}.`);
+}
+
+el.themeBtn.addEventListener('click', () => {
+  applyTheme(THEMES[(THEMES.indexOf(currentTheme()) + 1) % THEMES.length]);
+});
+
 /* ---------- top bar ---------- */
 el.addBtn.addEventListener('click', () => openSheet('add'));
 el.refreshBtn.addEventListener('click', () => fetchRates({ force: true }));
@@ -671,5 +703,6 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
 
 /* ---------- start ---------- */
 flagEmojiWorks = detectFlagEmoji();
+applyTheme(currentTheme());
 render();
 fetchRates();
