@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Rates — Currency Exchange</title>
+<meta name="description" content="Fast, offline-friendly multi-currency converter." />
+<meta name="theme-color" content="#000000" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black" />
+<meta name="apple-mobile-web-app-title" content="Rates" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<header class="topbar">
+  <h1>Rates</h1>
+  <div class="topbar-actions">
+    <button id="installBtn" class="text-btn" hidden>Install</button>
+    <button id="refreshBtn" class="icon-btn" aria-label="Refresh rates" title="Refresh rates">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5V2L8 6l4 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg>
+    </button>
+  </div>
+</header>
+
+<main>
+  <section class="card base-card">
+    <div class="card-label">You convert</div>
+    <div class="row">
+      <button class="currency-chip" id="baseChip" aria-label="Change base currency">
+        <span class="flag" id="baseFlag">🇺🇸</span>
+        <span class="code" id="baseCode">USD</span>
+        <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5z"/></svg>
+      </button>
+      <input id="baseAmount" class="amount-input" inputmode="decimal" enterkeyhint="done"
+             aria-label="Amount to convert" value="100.00" />
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <section id="list" class="list"></section>
+
+  <button id="addBtn" class="add-btn">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5h2v14h-2z"/><path d="M5 11h14v2H5z"/></svg>
+    Add another currency
+  </button>
+
+  <p id="hint" class="hint" hidden>Swipe a currency left, or press and hold, to remove it.</p>
+
+  <p id="status" class="status"></p>
+</main>
+
+<div id="sheet" class="sheet" hidden>
+  <div class="sheet-backdrop" data-close="1"></div>
+  <div class="sheet-panel" role="dialog" aria-modal="true" aria-label="Choose a currency">
+    <div class="sheet-head">
+      <h2 id="sheetTitle">Choose a currency</h2>
+      <button class="text-btn" data-close="1">Cancel</button>
+    </div>
+    <input id="search" class="search" type="search" placeholder="Search currency or code" autocomplete="off" />
+    <div id="options" class="options"></div>
+  </div>
+</div>
+
+<div id="confirmSheet" class="sheet" hidden>
+  <div class="sheet-backdrop" data-close-confirm="1"></div>
+  <div class="sheet-panel confirm-panel" role="dialog" aria-modal="true" aria-labelledby="confirmText">
+    <p id="confirmText" class="confirm-text"></p>
+    <button id="confirmRemove" class="danger-btn">Remove</button>
+    <button class="ghost-btn center" data-close-confirm="1">Cancel</button>
+  </div>
+</div>
+
+<script src="currencies.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
