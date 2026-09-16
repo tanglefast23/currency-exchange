@@ -6,7 +6,7 @@ const RATES_KEY = 'cx_rates_v1';
 const MAX_ROWS = 12;
 const STALE_MS = 30 * 60 * 1000; // refetch rates if the cache is older than 30 minutes
 
-const DEFAULT_STATE = { base: 'USD', amount: 100, list: ['VND', 'CAD', 'JPY'], updatedAt: 0 };
+const DEFAULT_STATE = { base: 'USD', amount: 100, list: ['VND', 'CAD', 'JPY'] };
 
 /* ---------- rate sources (all free, no API key) ---------- */
 const SOURCES = [
@@ -51,10 +51,6 @@ let pendingRemove = null;
 let fetching = false;
 let lastError = '';
 let deferredInstall = null;
-let syncMessage = '';        // shown inside the sync sheet
-let syncError = '';
-let syncBusy = false;
-let syncPushTimer = null;
 
 function loadState() {
   try {
@@ -63,18 +59,15 @@ function loadState() {
     return {
       base: saved.base,
       amount: Number.isFinite(saved.amount) ? saved.amount : DEFAULT_STATE.amount,
-      list: Array.isArray(saved.list) ? saved.list.filter(c => c !== saved.base) : [...DEFAULT_STATE.list],
-      updatedAt: Number(saved.updatedAt) || 0
+      list: Array.isArray(saved.list) ? saved.list.filter(c => c !== saved.base) : [...DEFAULT_STATE.list]
     };
   } catch {
     return { ...DEFAULT_STATE };
   }
 }
 
-function saveState({ local = false } = {}) {
-  if (!local) state.updatedAt = Date.now();
+function saveState() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch {}
-  if (!local) queueSync();
 }
 
 function loadRates() {
@@ -207,9 +200,6 @@ const el = {
   refreshBtn: document.getElementById('refreshBtn'),
   installBtn: document.getElementById('installBtn'),
   status: document.getElementById('status'),
-  syncBtn: document.getElementById('syncBtn'),
-  syncSheet: document.getElementById('syncSheet'),
-  syncBody: document.getElementById('syncBody'),
   sheet: document.getElementById('sheet'),
   sheetTitle: document.getElementById('sheetTitle'),
   search: document.getElementById('search'),
@@ -547,7 +537,6 @@ el.sheet.addEventListener('click', e => { if (e.target.dataset.close) closeSheet
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
   if (!el.sheet.hidden) closeSheet();
-  if (!el.syncSheet.hidden) closeSyncSheet();
   if (!el.confirmSheet.hidden) closeConfirm();
   closeOpenRow();
 });
@@ -585,192 +574,7 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
 }
 
 
-/* ---------- sync (Supabase) ---------- */
-/* Your currency list lives in this browser either way. When Supabase is set up
-   and you sign in, the same list follows you to every device. Newest edit wins. */
-
-function queueSync() {
-  if (!SYNC.isSignedIn()) return;
-  clearTimeout(syncPushTimer);
-  syncPushTimer = setTimeout(() => pushState(), 1200);
-}
-
-async function pushState() {
-  if (!SYNC.isSignedIn()) return;
-  try {
-    await SYNC.push(state);
-    syncError = '';
-  } catch (err) {
-    syncError = String(err.message || err);
-  }
-  renderSyncUi();
-}
-
-function adoptRemote(remote) {
-  state.base = remote.base || state.base;
-  state.amount = Number.isFinite(remote.amount) ? remote.amount : state.amount;
-  state.list = (remote.list || []).filter(code => code !== remote.base);
-  state.updatedAt = remote.updatedAt;
-  saveState({ local: true });   // came from the server, no need to push it back
-}
-
-async function syncNow({ announce = false } = {}) {
-  if (!SYNC.isSignedIn()) return;
-  syncBusy = true;
-  renderSyncUi();
-  try {
-    const remote = await SYNC.pull();
-    if (remote && remote.updatedAt > (state.updatedAt || 0)) {
-      adoptRemote(remote);
-      render();
-      fetchRates();
-      syncMessage = 'Loaded your saved currencies.';
-    } else {
-      await SYNC.push(state);
-      if (announce) syncMessage = 'Saved to your account.';
-    }
-    syncError = '';
-  } catch (err) {
-    syncError = String(err.message || err);
-  }
-  syncBusy = false;
-  renderSyncUi();
-}
-
-function renderSyncUi() {
-  const signedIn = SYNC.isSignedIn();
-  el.syncBtn.classList.toggle('muted', !signedIn);
-  el.syncBtn.classList.toggle('spin', syncBusy);
-  el.syncBtn.setAttribute('aria-label', signedIn ? `Synced as ${SYNC.accountEmail()}` : 'Sync across devices');
-  if (!el.syncSheet.hidden) renderSyncBody();
-}
-
-function renderSyncBody() {
-  const note = syncError
-    ? `<p class="sync-note error">${syncError}</p>`
-    : syncMessage ? `<p class="sync-note ok">${syncMessage}</p>` : '';
-
-  if (SYNC.isSignedIn()) {
-    el.syncBody.innerHTML = `
-      <p class="sync-lead">Signed in as <strong>${SYNC.accountEmail() || 'your account'}</strong>.
-      Your base currency, amount and list are saved to your account and load on any device you sign in on.</p>
-      ${note}
-      <div class="sync-actions">
-        <button class="primary-btn" data-sync-action="now" ${syncBusy ? 'disabled' : ''}>${syncBusy ? 'Syncing…' : 'Sync now'}</button>
-        <button class="ghost-btn" data-sync-action="signout">Sign out</button>
-      </div>`;
-    return;
-  }
-
-  if (!SYNC.isConfigured()) {
-    el.syncBody.innerHTML = `
-      <p class="sync-lead">Your currencies are saved in this browser already. To carry them
-      between devices, connect the app to Supabase.</p>
-      <p class="sync-note">Set <code>SUPABASE_URL</code> and <code>SUPABASE_ANON_KEY</code> in your
-      Vercel project, or paste them here to use them on this device only.</p>
-      ${note}
-      <form class="sync-form" data-sync-action="config">
-        <label class="field"><span>Project URL</span>
-          <input name="url" type="url" placeholder="https://xxxx.supabase.co" autocomplete="off" required /></label>
-        <label class="field"><span>Anon key</span>
-          <input name="anonKey" type="text" placeholder="eyJhbGci…" autocomplete="off" required /></label>
-        <button class="primary-btn" type="submit">Connect</button>
-      </form>`;
-    return;
-  }
-
-  el.syncBody.innerHTML = `
-    <p class="sync-lead">Enter your email and we will send you a sign-in link.
-    Open it on any device to get the same currency list there.</p>
-    ${note}
-    <form class="sync-form" data-sync-action="signin">
-      <label class="field"><span>Email</span>
-        <input name="email" type="email" placeholder="you@example.com" autocomplete="email" required /></label>
-      <button class="primary-btn" type="submit" ${syncBusy ? 'disabled' : ''}>${syncBusy ? 'Sending…' : 'Send sign-in link'}</button>
-    </form>
-    <button class="ghost-btn" data-sync-action="forget">Use a different Supabase project</button>`;
-}
-
-function openSyncSheet() {
-  el.syncSheet.hidden = false;
-  document.body.style.overflow = 'hidden';
-  renderSyncBody();
-}
-
-function closeSyncSheet() {
-  el.syncSheet.hidden = true;
-  document.body.style.overflow = '';
-  syncMessage = '';
-  syncError = '';
-}
-
-el.syncBtn.addEventListener('click', openSyncSheet);
-el.syncSheet.addEventListener('click', e => { if (e.target.dataset.closeSync) closeSyncSheet(); });
-
-el.syncBody.addEventListener('submit', async e => {
-  e.preventDefault();
-  const action = e.target.dataset.syncAction;
-  const data = new FormData(e.target);
-
-  if (action === 'config') {
-    SYNC.setManualConfig(data.get('url'), data.get('anonKey'));
-    syncMessage = 'Connected. Now sign in with your email.';
-    syncError = '';
-    renderSyncBody();
-    return;
-  }
-
-  if (action === 'signin') {
-    syncBusy = true;
-    syncError = '';
-    renderSyncBody();
-    try {
-      await SYNC.sendMagicLink(data.get('email'));
-      syncMessage = 'Check your email for the sign-in link, then open it on this device.';
-    } catch (err) {
-      syncError = String(err.message || err);
-    }
-    syncBusy = false;
-    renderSyncBody();
-  }
-});
-
-el.syncBody.addEventListener('click', async e => {
-  const button = e.target.closest('button[data-sync-action]');
-  if (!button) return;
-  const action = button.dataset.syncAction;
-
-  if (action === 'now') { await syncNow({ announce: true }); return; }
-
-  if (action === 'signout') {
-    SYNC.signOut();
-    syncMessage = 'Signed out. This browser keeps its own list.';
-    renderSyncUi();
-    renderSyncBody();
-    return;
-  }
-
-  if (action === 'forget') {
-    SYNC.clearManualConfig();
-    await SYNC.loadConfig();
-    syncMessage = '';
-    renderSyncBody();
-  }
-});
-
-async function initSync() {
-  const result = await SYNC.init();
-  if (result && result.error) syncError = result.error;
-  renderSyncUi();
-  if (result && result.signedIn) {
-    syncMessage = 'Signed in.';
-    openSyncSheet();
-  }
-  if (SYNC.isSignedIn()) await syncNow();
-}
-
 /* ---------- start ---------- */
 flagEmojiWorks = detectFlagEmoji();
 render();
 fetchRates();
-initSync();
