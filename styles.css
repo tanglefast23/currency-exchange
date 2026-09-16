@@ -12,6 +12,13 @@
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
+/* Stop a double tap being read as zoom — tapping 3 twice should enter 33.
+   `manipulation` keeps normal panning and pinch-to-zoom, and only drops the
+   double-tap gesture, so the page can still be zoomed deliberately. */
+html, body, button, .amount-value, .pad-key, .option, .currency-chip {
+  touch-action: manipulation;
+}
+
 html, body {
   margin: 0;
   background: var(--bg);
@@ -67,7 +74,7 @@ body {
   position: relative;
   border-radius: var(--radius);
   overflow: hidden;
-  touch-action: pan-y;
+  touch-action: pan-y pinch-zoom;
 }
 .rate-row .row { align-items: center; }
 

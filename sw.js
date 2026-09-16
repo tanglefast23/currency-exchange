@@ -1,5 +1,5 @@
 /* Cache the app shell so the converter opens instantly and works offline. */
-const CACHE = 'currency-exchange-v3';
+const CACHE = 'currency-exchange-v4';
 const SHELL = [
   './',
   'index.html',
@@ -34,33 +34,20 @@ self.addEventListener('fetch', event => {
   // Rate APIs live on other origins: always go to the network, never serve a stale rate.
   if (url.origin !== self.location.origin) return;
 
-  // Navigations: network first, fall back to the cached page when offline.
-  if (request.mode === 'navigate') {
-    event.respondWith(
-      fetch(request)
-        .then(response => {
-          const copy = response.clone();
-          caches.open(CACHE).then(cache => cache.put('index.html', copy));
-          return response;
-        })
-        .catch(() => caches.match('index.html'))
-    );
-    return;
-  }
+  // Network first for the whole shell, cache only as the offline fallback.
+  // Cache-first served yesterday's script after a deploy, so a fix could take
+  // two reloads to arrive; the cache is for being offline, not for being quick.
+  const fallbackKey = request.mode === 'navigate' ? 'index.html' : request;
 
-  // Everything else in the shell: cache first, refresh in the background.
   event.respondWith(
-    caches.match(request).then(cached => {
-      const network = fetch(request)
-        .then(response => {
-          if (response.ok) {
-            const copy = response.clone();
-            caches.open(CACHE).then(cache => cache.put(request, copy));
-          }
-          return response;
-        })
-        .catch(() => cached);
-      return cached || network;
-    })
+    fetch(request)
+      .then(response => {
+        if (response.ok) {
+          const copy = response.clone();
+          caches.open(CACHE).then(cache => cache.put(fallbackKey, copy));
+        }
+        return response;
+      })
+      .catch(() => caches.match(fallbackKey).then(cached => cached || caches.match('index.html')))
   );
 });
