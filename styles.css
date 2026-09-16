@@ -74,11 +74,45 @@ body {
 }
 
 .rate-row {
+  position: relative;
+  border-radius: var(--radius);
+  overflow: hidden;
+  touch-action: pan-y;
+}
+.rate-row .row { align-items: flex-start; }
+
+.row-surface {
+  position: relative;
   background: var(--card);
   border-radius: var(--radius);
   padding: 18px 20px;
+  transform: translateX(0);
+  transition: transform .18s ease-out;
 }
-.rate-row .row { align-items: flex-start; }
+.rate-row.dragging .row-surface { transition: none; }
+.rate-row.open .row-surface { transform: translateX(-104px); }
+.rate-row.removing { transition: opacity .18s, max-height .22s, margin .22s; opacity: 0; max-height: 0; }
+
+.row-delete {
+  position: absolute;
+  top: 0; right: 0; bottom: 0;
+  width: 104px;
+  border: 0;
+  background: var(--danger);
+  color: #fff;
+  font: 600 16px inherit;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  gap: 2px;
+}
+.row-delete svg { width: 22px; height: 22px; fill: #fff; }
+.row-delete:active { filter: brightness(.9); }
+
+/* Hidden at rest so no red shows through the card's rounded corners. */
+.row-delete { opacity: 0; pointer-events: none; transition: opacity .12s; }
+.rate-row.dragging .row-delete,
+.rate-row.open .row-delete { opacity: 1; pointer-events: auto; }
 
 /* ---------- currency chip ---------- */
 .currency-chip {
@@ -145,31 +179,39 @@ body {
   text-overflow: ellipsis;
 }
 
-/* ---------- edit mode ---------- */
-.remove-btn {
-  display: none;
-  background: none; border: 0; padding: 6px; margin-left: 4px;
-  cursor: pointer; border-radius: 999px; align-self: center;
-}
-.remove-btn svg { width: 24px; height: 24px; fill: var(--danger); display: block; }
-body.editing .remove-btn { display: block; }
-body.editing .rate-row { padding-right: 12px; }
-body.editing .rate-note { font-size: 13px; }
-
+/* ---------- add ---------- */
 .add-btn {
   width: 100%;
   margin-top: 12px;
-  background: var(--card);
-  border: 0;
+  background: none;
+  border: 1px solid var(--line);
   border-radius: var(--radius);
-  color: var(--accent);
+  color: var(--text);
   font: 600 17px inherit;
-  padding: 16px;
-  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 18px;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
   cursor: pointer;
 }
-.add-btn svg { width: 20px; height: 20px; fill: var(--accent); }
-.add-btn:active { background: var(--card-press); }
+.add-btn svg { width: 20px; height: 20px; fill: var(--text); }
+.add-btn:active { background: var(--card); }
+
+.hint {
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+  margin: 14px 0 0;
+}
+
+/* ---------- confirm removal ---------- */
+.confirm-panel { padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
+.confirm-text { font-size: 17px; line-height: 1.4; margin: 18px 4px 20px; text-align: center; }
+.danger-btn {
+  width: 100%;
+  background: var(--danger); border: 0; border-radius: 14px;
+  color: #fff; font: 600 16px inherit; padding: 15px; cursor: pointer;
+}
+.danger-btn:active { filter: brightness(.9); }
+.ghost-btn.center { width: 100%; text-align: center; padding: 14px 4px; }
 
 .status {
   color: var(--muted);

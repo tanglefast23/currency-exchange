@@ -1,6 +1,7 @@
 /* Currency exchange — vanilla JS, no build step. */
 
 const STORE_KEY = 'cx_state_v1';
+const HINT_KEY = 'cx_removal_hint_v1';
 const RATES_KEY = 'cx_rates_v1';
 const MAX_ROWS = 12;
 const STALE_MS = 30 * 60 * 1000; // refetch rates if the cache is older than 30 minutes
@@ -42,7 +43,11 @@ function parseCurrencyApi(data, base) {
 let state = loadState();
 let rateTables = loadRates();   // { USD: { rates, time }, ... }
 let sheetMode = null;           // 'base' | 'add' | index of a row
-let editing = false;
+let swipe = null;          // in-flight swipe gesture
+let openRow = null;        // the row currently showing its Delete panel
+let longPressTimer = null;
+let suppressNextClick = false;   // the click a drag or a hold leaves behind
+let pendingRemove = null;
 let fetching = false;
 let lastError = '';
 let deferredInstall = null;
@@ -195,7 +200,10 @@ const el = {
   baseAmount: document.getElementById('baseAmount'),
   list: document.getElementById('list'),
   addBtn: document.getElementById('addBtn'),
-  editBtn: document.getElementById('editBtn'),
+  hint: document.getElementById('hint'),
+  confirmSheet: document.getElementById('confirmSheet'),
+  confirmText: document.getElementById('confirmText'),
+  confirmRemove: document.getElementById('confirmRemove'),
   refreshBtn: document.getElementById('refreshBtn'),
   installBtn: document.getElementById('installBtn'),
   status: document.getElementById('status'),
@@ -222,7 +230,9 @@ function render() {
   state.list.forEach((code, index) => el.list.appendChild(renderRow(code, index)));
 
   el.addBtn.hidden = state.list.length >= MAX_ROWS;
+  el.hint.hidden = state.list.length === 0 || localStorage.getItem(HINT_KEY) === '1';
   el.refreshBtn.classList.toggle('spin', fetching);
+  openRow = null;
   renderStatus();
 }
 
@@ -230,24 +240,27 @@ function renderRow(code, index) {
   const info = currencyInfo(code);
   const rate = rateFor(code);
   const row = document.createElement('section');
-  row.className = 'card rate-row';
+  row.className = 'rate-row';
   row.dataset.index = String(index);
   row.innerHTML = `
-    <div class="row">
-      <button class="currency-chip" data-action="pick" aria-label="Change ${info.name}">
-        ${flagHTML(code)}
-        <span class="code">${code}</span>
-        <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5z"/></svg>
-      </button>
-      <div class="amount-wrap">
-        <input class="amount-input" inputmode="decimal" enterkeyhint="done"
-               aria-label="Amount in ${info.name}" data-code="${code}"
-               value="${rate === null ? '—' : formatAmount(state.amount * rate)}" />
-        <div class="rate-note">${rate === null ? 'rate unavailable' : `1 ${state.base} → ${formatRate(rate)} ${code}`}</div>
+    <button class="row-delete" data-action="remove" tabindex="-1" aria-label="Remove ${info.name}">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l1 2h4v2H4V5h4zM6 9h12l-1 12H7z"/></svg>
+      ${code}
+    </button>
+    <div class="row-surface">
+      <div class="row">
+        <button class="currency-chip" data-action="pick" aria-label="Change ${info.name}">
+          ${flagHTML(code)}
+          <span class="code">${code}</span>
+          <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5z"/></svg>
+        </button>
+        <div class="amount-wrap">
+          <input class="amount-input" inputmode="decimal" enterkeyhint="done"
+                 aria-label="Amount in ${info.name}" data-code="${code}"
+                 value="${rate === null ? '—' : formatAmount(state.amount * rate)}" />
+          <div class="rate-note">${rate === null ? 'rate unavailable' : `1 ${state.base} → ${formatRate(rate)} ${code}`}</div>
+        </div>
       </div>
-      <button class="remove-btn" data-action="remove" aria-label="Remove ${info.name}">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM7 11h10v2H7z"/></svg>
-      </button>
     </div>`;
   return row;
 }
@@ -327,11 +340,132 @@ el.list.addEventListener('click', e => {
 });
 
 function removeRow(index) {
+  if (!state.list[index]) return;
   state.list.splice(index, 1);
+  try { localStorage.setItem(HINT_KEY, '1'); } catch {}   // they know the gesture now
   saveState();
   render();
-  if (!state.list.length) setEditing(false);
 }
+
+/* ---------- swipe left / press and hold to remove ---------- */
+const SWIPE_START = 10;   // px before a drag counts as a swipe rather than a tap
+const SWIPE_OPEN = 52;    // px dragged before the Delete panel stays open
+const LONG_PRESS_MS = 500;
+
+function closeOpenRow() {
+  if (!openRow) return;
+  openRow.classList.remove('open');
+  openRow = null;
+}
+
+function endSwipe() {
+  clearTimeout(longPressTimer);
+  longPressTimer = null;
+  if (!swipe) return;
+  const { row, dragging, dx } = swipe;
+  const surface = row.querySelector('.row-surface');
+  row.classList.remove('dragging');
+  surface.style.transform = '';
+  if (dragging) {
+    suppressNextClick = true;   // a swipe must not also count as a tap
+    closeOpenRow();
+    if (dx <= -SWIPE_OPEN) { row.classList.add('open'); openRow = row; }
+  }
+  swipe = null;
+}
+
+el.list.addEventListener('pointerdown', e => {
+  const row = e.target.closest('.rate-row');
+  if (!row || e.target.closest('.row-delete')) return;
+  if (openRow && openRow !== row) closeOpenRow();
+
+  swipe = { row, startX: e.clientX, startY: e.clientY, dx: 0, dragging: false, pointerId: e.pointerId };
+
+  // Press and hold anywhere but the amount field (where holding means select/paste).
+  if (e.target.closest('.amount-input')) return;
+  longPressTimer = setTimeout(() => {
+    longPressTimer = null;
+    if (!swipe || swipe.dragging) return;
+    suppressNextClick = true;
+    try { navigator.vibrate && navigator.vibrate(12); } catch {}
+    askRemove(Number(row.dataset.index));
+    swipe = null;
+  }, LONG_PRESS_MS);
+});
+
+el.list.addEventListener('pointermove', e => {
+  if (!swipe || e.pointerId !== swipe.pointerId) return;
+  const dx = e.clientX - swipe.startX;
+  const dy = e.clientY - swipe.startY;
+
+  if (!swipe.dragging) {
+    if (Math.abs(dy) > SWIPE_START && Math.abs(dy) > Math.abs(dx)) { endSwipe(); return; } // vertical scroll
+    if (Math.abs(dx) <= SWIPE_START) return;
+    swipe.dragging = true;
+    clearTimeout(longPressTimer);
+    swipe.row.classList.add('dragging');
+    try { swipe.row.setPointerCapture(e.pointerId); } catch {}
+  }
+
+  const start = swipe.row.classList.contains('open') ? -104 : 0;
+  swipe.dx = Math.max(-140, Math.min(0, start + dx));
+  swipe.row.querySelector('.row-surface').style.transform = `translateX(${swipe.dx}px)`;
+});
+
+el.list.addEventListener('pointerup', endSwipe);
+el.list.addEventListener('pointercancel', endSwipe);
+
+// A swipe, or a tap while a row is open, must not reach the buttons underneath.
+// Each new press starts clean, so a suppressed click can never strand the next tap.
+document.addEventListener('pointerdown', () => { suppressNextClick = false; }, true);
+
+document.addEventListener('click', e => {
+  if (suppressNextClick) {
+    suppressNextClick = false;
+    e.stopPropagation();
+    e.preventDefault();
+    return;
+  }
+  if (!openRow) return;
+  if (e.target.closest('.row-delete')) return;
+  if (openRow.contains(e.target)) { e.stopPropagation(); e.preventDefault(); }
+  closeOpenRow();
+}, true);
+
+// Keyboard: Delete or Backspace on a focused currency removes it.
+el.list.addEventListener('keydown', e => {
+  if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+  if (e.target.closest('.amount-input')) return;
+  const row = e.target.closest('.rate-row');
+  if (!row) return;
+  e.preventDefault();
+  askRemove(Number(row.dataset.index));
+});
+
+/* ---------- confirm sheet ---------- */
+function askRemove(index) {
+  const code = state.list[index];
+  if (!code) return;
+  pendingRemove = index;
+  el.confirmText.textContent = `Remove ${currencyInfo(code).name} (${code}) from your list?`;
+  el.confirmSheet.hidden = false;
+  document.body.style.overflow = 'hidden';
+  el.confirmRemove.focus();
+}
+
+function closeConfirm() {
+  el.confirmSheet.hidden = true;
+  document.body.style.overflow = '';
+  pendingRemove = null;
+}
+
+el.confirmRemove.addEventListener('click', () => {
+  const index = pendingRemove;
+  closeConfirm();
+  if (index !== null) removeRow(index);
+});
+
+el.confirmSheet.addEventListener('click', e => { if (e.target.dataset.closeConfirm) closeConfirm(); });
 
 /* ---------- picker sheet ---------- */
 function openSheet(mode) {
@@ -414,19 +548,14 @@ document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
   if (!el.sheet.hidden) closeSheet();
   if (!el.syncSheet.hidden) closeSyncSheet();
+  if (!el.confirmSheet.hidden) closeConfirm();
+  closeOpenRow();
 });
 
 /* ---------- top bar ---------- */
 el.baseChip.addEventListener('click', () => openSheet('base'));
 el.addBtn.addEventListener('click', () => openSheet('add'));
 el.refreshBtn.addEventListener('click', () => fetchRates({ force: true }));
-
-function setEditing(next) {
-  editing = next;
-  document.body.classList.toggle('editing', editing);
-  el.editBtn.textContent = editing ? 'Done' : 'Edit';
-}
-el.editBtn.addEventListener('click', () => setEditing(!editing));
 
 window.addEventListener('online', () => fetchRates({ force: true }));
 window.addEventListener('offline', renderStatus);

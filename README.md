@@ -9,8 +9,9 @@ no API key, no dependencies.
 ## What it does
 
 - **Tap a currency** (the code or the flag) to swap it for another — 162 currencies, searchable.
-- **Add currency** appends a row, up to 12.
-- **Edit** shows a red minus on each row to take it off the list.
+- **Add another currency** appends a row, up to 12.
+- **Swipe a row left** to reveal Delete, or **press and hold** it to confirm removal.
+  With a keyboard, focus a currency and press Delete.
 - **Type in any row**, not just the top one — every other amount recalculates.
 - Your base currency, amount and list are saved in the browser, so the app opens where you left it.
 - **Sync** (optional): sign in with your email and the same list follows you to every device.
@@ -28,6 +29,8 @@ Three free, key-less sources are tried in order, so one outage does not break th
 
 Rates are mid-market reference rates. Banks and exchange desks charge a spread,
 so treat these as indicative, not what you will actually get at the counter.
+
+![Swipe to delete](docs/swipe.png)
 
 ## Memory across devices (Supabase)
 
