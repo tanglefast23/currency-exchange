@@ -264,24 +264,32 @@ function flagHTML(code) {
 }
 
 /* ---------- elements ---------- */
+/* A missing control must never take the rest of the app down with it. New
+   markup paired with a stale cached script once threw on the first lookup and
+   left a screen that rendered nothing and answered no taps, so anything absent
+   resolves to a detached node that quietly absorbs whatever is done to it. */
+function pick(id) {
+  return document.getElementById(id) || document.createElement('span');
+}
+
 const el = {
-  list: document.getElementById('list'),
-  addBtn: document.getElementById('addBtn'),
-  hint: document.getElementById('hint'),
-  padSheet: document.getElementById('padSheet'),
-  padFlag: document.getElementById('padFlag'),
-  padCode: document.getElementById('padCode'),
-  padValue: document.getElementById('padValue'),
-  confirmSheet: document.getElementById('confirmSheet'),
-  confirmText: document.getElementById('confirmText'),
-  confirmRemove: document.getElementById('confirmRemove'),
-  refreshBtn: document.getElementById('refreshBtn'),
-  installBtn: document.getElementById('installBtn'),
-  status: document.getElementById('status'),
-  sheet: document.getElementById('sheet'),
-  sheetTitle: document.getElementById('sheetTitle'),
-  search: document.getElementById('search'),
-  options: document.getElementById('options')
+  list: pick('list'),
+  addBtn: pick('addBtn'),
+  hint: pick('hint'),
+  padSheet: pick('padSheet'),
+  padFlag: pick('padFlag'),
+  padCode: pick('padCode'),
+  padValue: pick('padValue'),
+  confirmSheet: pick('confirmSheet'),
+  confirmText: pick('confirmText'),
+  confirmRemove: pick('confirmRemove'),
+  refreshBtn: pick('refreshBtn'),
+  installBtn: pick('installBtn'),
+  status: pick('status'),
+  sheet: pick('sheet'),
+  sheetTitle: pick('sheetTitle'),
+  search: pick('search'),
+  options: pick('options')
 };
 
 /* ---------- rendering ---------- */
@@ -428,7 +436,7 @@ el.list.addEventListener('click', e => {
 
 function removeRow(index) {
   const code = state.list[index];
-  if (!code) return;
+  if (!code || state.list.length <= 1) return;   // never leave an empty screen
   state.list.splice(index, 1);
   if (state.anchor === code) reanchor(code);
   try { localStorage.setItem(HINT_KEY, '1'); } catch {}   // they know the gesture now
@@ -458,7 +466,7 @@ function endSwipe() {
   if (dragging) {
     suppressNextClick = true;   // a swipe must not also count as a tap
     closeOpenRow();
-    if (dx <= -SWIPE_OPEN) { row.classList.add('open'); openRow = row; }
+    if (dx <= -SWIPE_OPEN && state.list.length > 1) { row.classList.add('open'); openRow = row; }
   }
   swipe = null;
 }
@@ -531,7 +539,7 @@ el.list.addEventListener('keydown', e => {
 /* ---------- confirm sheet ---------- */
 function askRemove(index) {
   const code = state.list[index];
-  if (!code) return;
+  if (!code || state.list.length <= 1) return;   // the last one stays
   pendingRemove = index;
   el.confirmText.textContent = `Remove ${currencyInfo(code).name} (${code}) from your list?`;
   el.confirmSheet.hidden = false;
@@ -655,7 +663,9 @@ window.addEventListener('appinstalled', () => { el.installBtn.hidden = true; });
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })
+      .then(reg => reg.update())
+      .catch(() => {});
   });
 }
 
