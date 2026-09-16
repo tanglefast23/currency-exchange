@@ -659,6 +659,15 @@ function applyTheme(name) {
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.content = getComputedStyle(document.body).backgroundColor || meta.content;
 
+  // Toggling `hidden` rather than leaning on a stylesheet rule keeps exactly
+  // one icon on screen even if the CSS is a version behind.
+  document.querySelectorAll('.theme-icon').forEach(icon => {
+    // These are SVG elements, and `hidden` is an HTMLElement property: assigning
+    // it would set a stray JS property and leave the attribute untouched.
+    if (icon.dataset.themeIcon === theme) icon.removeAttribute('hidden');
+    else icon.setAttribute('hidden', '');
+  });
+
   const next = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length];
   el.themeBtn.setAttribute('aria-label', `Theme: ${theme}. Tap for ${next}.`);
   el.themeBtn.setAttribute('title', `Theme: ${theme}. Tap for ${next}.`);

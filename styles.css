@@ -101,10 +101,7 @@ body {
 .icon-btn:active { background: var(--card); }
 .icon-btn.spin svg { animation: spin .8s linear infinite; }
 
-.theme-icon { display: none; }
-[data-theme="dark"] .theme-dark,
-[data-theme="light"] .theme-light,
-[data-theme="pink"] .theme-pink { display: block; }
+.theme-icon[hidden] { display: none; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ---------- cards ---------- */

@@ -1,11 +1,11 @@
 /* Cache the app shell so the converter opens instantly and works offline. */
-const CACHE = 'currency-exchange-v4';
+const CACHE = 'currency-exchange-v5';
 const SHELL = [
   './',
   'index.html',
-  'styles.css',
-  'app.js',
-  'currencies.js',
+  'styles.css?v=7',
+  'app.js?v=7',
+  'currencies.js?v=7',
   'manifest.webmanifest',
   'icons/icon.svg',
   'icons/icon-192.png',
